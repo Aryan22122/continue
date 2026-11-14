@@ -1,16 +1,17 @@
-name: Cloud Routine
+name: Auto-Continue Claude Task
 
 on:
   schedule:
-    # Runs every 6 hours. (Adjust as needed)
-    - cron: '0 */6 * * *'
-  workflow_dispatch: # Allows you to click a button to test it right now
+    - cron: '0 */6 * * *' # Runs every 6 hours
+  workflow_dispatch: # Allows manual testing
 
 jobs:
   continue-task:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed to commit CHECKPOINT.md back to the repo
+      contents: write # Needed to commit CHECKPOINT.md back to your repo
+    timeout-minutes: 360 # 6-hour hard limit for the job (safety net)
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,37 +21,28 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Claude Code CLI
+      - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install LiteLLM Proxy
-        run: pip install 'litellm[proxy]'
-
-      - name: Start LiteLLM (NVIDIA NIM Proxy)
+      - name: Run Claude Task with Retry Watchdog
         run: |
-          # Start the proxy in the background (translates Anthropic to NVIDIA NIM)
-          litellm --model nvidia_nim/meta/llama-3.1-70b-instruct --api_key ${{ secrets.NVIDIA_API_KEY }} --port 8082 &
-          sleep 5
+          claude -p "Read CHECKPOINT.md. Do only the 'Next step'. After every small step, update CHECKPOINT.md, commit, and push." \
+            --allowedTools "Read,Write,Edit,Bash(git *)"
         env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          # --- THIS IS THE MAGIC THAT PRESSES CONTINUE AUTOMATICALLY ---
+          CLAUDE_CODE_RETRY_WATCHDOG: "1"
+          # Optional: Prevent waiting forever if the reset is days away
+          # CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS: "21600000" # 6 hours max wait
+          
+          # --- YOUR API KEY (Required for Free Plan) ---
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # If you are using the free NVIDIA proxy, set the base URL instead:
+          # ANTHROPIC_BASE_URL: "http://localhost:8082"
 
-      - name: Run Claude Code
-        run: |
-          claude -p "Read CHECKPOINT.md. Do only the 'Next step'. After every small step, update CHECKPOINT.md, commit, and push." --allowedTools "Read,Write,Edit,Bash(git *)"
-        env:
-          ANTHROPIC_BASE_URL: "http://localhost:8082"
-          ANTHROPIC_API_KEY: "dummy-key"
-
-      - name: Commit and Push Checkpoint
+      - name: Commit and Push Progress
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHECKPOINT.md
-          # Only commit if there are changes
-          git diff --cached --quiet || git commit -m "chore: update checkpoint [skip ci]"
+          git add .
+          git diff --cached --quiet || git commit -m "chore: auto-resume checkpoint update [skip ci]"
           git push
