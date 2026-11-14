@@ -1,0 +1,56 @@
+name: Cloud Routine
+
+on:
+  schedule:
+    # Runs every 6 hours. (Adjust as needed)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allows you to click a button to test it right now
+
+jobs:
+  continue-task:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to commit CHECKPOINT.md back to the repo
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install LiteLLM Proxy
+        run: pip install 'litellm[proxy]'
+
+      - name: Start LiteLLM (NVIDIA NIM Proxy)
+        run: |
+          # Start the proxy in the background (translates Anthropic to NVIDIA NIM)
+          litellm --model nvidia_nim/meta/llama-3.1-70b-instruct --api_key ${{ secrets.NVIDIA_API_KEY }} --port 8082 &
+          sleep 5
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+
+      - name: Run Claude Code
+        run: |
+          claude -p "Read CHECKPOINT.md. Do only the 'Next step'. After every small step, update CHECKPOINT.md, commit, and push." --allowedTools "Read,Write,Edit,Bash(git *)"
+        env:
+          ANTHROPIC_BASE_URL: "http://localhost:8082"
+          ANTHROPIC_API_KEY: "dummy-key"
+
+      - name: Commit and Push Checkpoint
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHECKPOINT.md
+          # Only commit if there are changes
+          git diff --cached --quiet || git commit -m "chore: update checkpoint [skip ci]"
+          git push
