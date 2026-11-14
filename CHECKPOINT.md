@@ -1,20 +1,13 @@
-# Checkpoint
-
-_Last updated: <date and time>_
+# Project Checkpoint
 
 ## Goal
-<One or two sentences: what the finished result looks like.>
+Build a basic Python script that fetches weather data.
 
-## Done
-- <finished item>
+## What's Done
+- [x] Project initialized.
 
 ## Next step
-<The single next action, specific enough to start without asking questions.>
-
-## Context
-- Key files: <paths>
-- How to run / test: <commands>
-- Decisions already made: <short list>
+- [ ] Create a `weather.py` file that uses the `requests` library to fetch data from a public API.
 
 ## Blockers
-- none
+None.
